@@ -39,9 +39,9 @@ namespace ConsoleScanner
             var timer = new Stopwatch();
             timer.Start();
             // Check every file and directory in head directory
-            GetDirectoryIerarchy(entities, fileNames_HeadDirectory, filesAndDirectories_HeadDirectory);
-            timer.Stop();
+            Task.WaitAll(GetDirectoryIerarchy(entities, fileNames_HeadDirectory, filesAndDirectories_HeadDirectory));
 
+           
 
             int startIndex = 0;
             string str = "";
@@ -51,20 +51,20 @@ namespace ConsoleScanner
             Console.ReadLine();
         }
 
-        static void GetDirectoryIerarchy(List<Entity> entities, List<string> fileNames_HeadDirectory, FileSystemInfo[] filesAndDirectories_HeadDirectory)
+        static async Task GetDirectoryIerarchy(List<Entity> entities, List<string> fileNames_HeadDirectory, FileSystemInfo[] filesAndDirectories_HeadDirectory)
         {
             foreach (var item in filesAndDirectories_HeadDirectory)
             {
-                
                 if (fileNames_HeadDirectory.Contains(item.Name))
                     entities.Add(CreateEntityFromFile((FileInfo)item));
                 else
-                    ProceedDirectory(entities, (DirectoryInfo)item);
+                    await ProceedDirectory(entities, (DirectoryInfo)item);
 
             }
+            //return Task.CompletedTask;
         }
 
-        static async Task<long> GetDirectorySize(DirectoryInfo dir)
+        static long GetDirectorySize(DirectoryInfo dir)
         {
             long size = 0;
 
@@ -75,7 +75,7 @@ namespace ConsoleScanner
                 size += file.Length;
 
             foreach (var directory in directories)
-                size += await GetDirectorySize(directory);
+                size += GetDirectorySize(directory);
 
             return size;
         }
@@ -88,7 +88,7 @@ namespace ConsoleScanner
                 Type = file.Extension == ".txt" ? EntityType.TextFile : EntityType.File,
                 SubDirecory = file.Directory,
                 Size = file.Length,
-                Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory).Result).ToString() + "%"
+                Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory)).ToString() + "%"
             };
         }
 
@@ -99,13 +99,14 @@ namespace ConsoleScanner
                 Name = dir.Name,
                 Type = EntityType.Directory,
                 SubDirecory = isHeadDirectory ? null : dir.Parent,
-                Size = GetDirectorySize(dir).Result,
-                Persantage = isHeadDirectory ? String.Empty : (100 * (float)GetDirectorySize(dir).Result / GetDirectorySize(dir.Parent).Result).ToString() + "%"
+                Size = GetDirectorySize(dir),
+                Persantage = isHeadDirectory ? String.Empty : (100 * (float)GetDirectorySize(dir) / GetDirectorySize(dir.Parent)).ToString() + "%"
             };
         }
 
-        static void ProceedDirectory(List<Entity> entities, DirectoryInfo dir)
+        static async Task ProceedDirectory(List<Entity> entities, DirectoryInfo dir)
         {
+            //Console.WriteLine(Thread.CurrentThread.ManagedThreadId);
             entities.Add(CreateEntityFromDirectory(dir));
 
             // Get files and directories in the sub folder
@@ -126,7 +127,7 @@ namespace ConsoleScanner
                 if (fileNames_SubDirectory.Contains(item.Name))
                     entities.Add(CreateEntityFromFile((FileInfo)item));
                 else
-                    ProceedDirectory(entities, (DirectoryInfo)item);
+                    await Task.Run(() => ProceedDirectory(entities, (DirectoryInfo)item));
 
             }
         }
