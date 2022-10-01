@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ConsoleScanner
@@ -12,11 +14,13 @@ namespace ConsoleScanner
     {
         static void Main(string[] args)
         {
+            byte threadCount = 2;
+
             // List of our 
             List<Entity> entities = new List<Entity>();
 
             // Get head directory for proceeding
-            string directoryPath = @"C:\Users\Gleb\Desktop\Temp\myTests";
+            string directoryPath = @"C:\Users\Gleb\Desktop\Main Projects\Bank-Chat-Bot";
             DirectoryInfo headDirectory = new DirectoryInfo(directoryPath);
 
             entities.Add(CreateEntityFromDirectory(headDirectory, true));
@@ -32,23 +36,35 @@ namespace ConsoleScanner
             foreach (var file in files_HeadDirectory)
                 fileNames_HeadDirectory.Add(file.Name);
 
+            var timer = new Stopwatch();
+            timer.Start();
             // Check every file and directory in head directory
-            foreach (var item in filesAndDirectories_HeadDirectory)
-            {
-                if (fileNames_HeadDirectory.Contains(item.Name))
-                    entities.Add(CreateEntityFromFile((FileInfo)item));
-                else
-                    ProceedDirectory(entities, (DirectoryInfo)item);
-            }
+            GetDirectoryIerarchy(entities, fileNames_HeadDirectory, filesAndDirectories_HeadDirectory);
+            timer.Stop();
+
 
             int startIndex = 0;
             string str = "";
             PrintEntities(entities, ref startIndex, ref str, null);
 
+            Console.WriteLine($"\n\nTime spent: {(float)timer.ElapsedMilliseconds / 1000} s");
             Console.ReadLine();
         }
 
-        static long GetDirectorySize(DirectoryInfo dir)
+        static void GetDirectoryIerarchy(List<Entity> entities, List<string> fileNames_HeadDirectory, FileSystemInfo[] filesAndDirectories_HeadDirectory)
+        {
+            foreach (var item in filesAndDirectories_HeadDirectory)
+            {
+                
+                if (fileNames_HeadDirectory.Contains(item.Name))
+                    entities.Add(CreateEntityFromFile((FileInfo)item));
+                else
+                    ProceedDirectory(entities, (DirectoryInfo)item);
+
+            }
+        }
+
+        static async Task<long> GetDirectorySize(DirectoryInfo dir)
         {
             long size = 0;
 
@@ -59,7 +75,7 @@ namespace ConsoleScanner
                 size += file.Length;
 
             foreach (var directory in directories)
-                size += GetDirectorySize(directory);
+                size += await GetDirectorySize(directory);
 
             return size;
         }
@@ -72,7 +88,7 @@ namespace ConsoleScanner
                 Type = file.Extension == ".txt" ? EntityType.TextFile : EntityType.File,
                 SubDirecory = file.Directory,
                 Size = file.Length,
-                Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory)).ToString() + "%"
+                Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory).Result).ToString() + "%"
             };
         }
 
@@ -83,8 +99,8 @@ namespace ConsoleScanner
                 Name = dir.Name,
                 Type = EntityType.Directory,
                 SubDirecory = isHeadDirectory ? null : dir.Parent,
-                Size = GetDirectorySize(dir),
-                Persantage = isHeadDirectory ? String.Empty : (100 * (float)GetDirectorySize(dir) / GetDirectorySize(dir.Parent)).ToString() + "%"
+                Size = GetDirectorySize(dir).Result,
+                Persantage = isHeadDirectory ? String.Empty : (100 * (float)GetDirectorySize(dir).Result / GetDirectorySize(dir.Parent).Result).ToString() + "%"
             };
         }
 
