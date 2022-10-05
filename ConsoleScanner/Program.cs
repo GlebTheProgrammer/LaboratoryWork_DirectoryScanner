@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 
 namespace ConsoleScanner
 {
@@ -14,8 +15,6 @@ namespace ConsoleScanner
     {
         static void Main(string[] args)
         {
-            byte threadCount = 2;
-
             // List of our 
             List<Entity> entities = new List<Entity>();
 
@@ -29,19 +28,24 @@ namespace ConsoleScanner
             var files_HeadDirectory = headDirectory.GetFiles();
             var directories_HeadDirectory = headDirectory.GetDirectories();
             // Dont include hidden files
-            var filesAndDirectories_HeadDirectory = headDirectory.GetFileSystemInfos();//.
-                      //Where(f => !f.Attributes.ToString().Contains("Hidden")).ToList();
+            var filesAndDirectories_HeadDirectory = headDirectory.GetFileSystemInfos();
 
             var fileNames_HeadDirectory = new List<string>();
             foreach (var file in files_HeadDirectory)
                 fileNames_HeadDirectory.Add(file.Name);
 
             var timer = new Stopwatch();
-            timer.Start();
             // Check every file and directory in head directory
-            Task.WaitAll(GetDirectoryIerarchy(entities, fileNames_HeadDirectory, filesAndDirectories_HeadDirectory));
+            GetDirectoryIerarchy(entities, fileNames_HeadDirectory, filesAndDirectories_HeadDirectory);
 
-           
+
+            ThreadPool.GetAvailableThreads(out int systemThreadsCount, out _);
+
+            timer.Start();
+            CalculateSizeOfAllEntities(entities, isAsync: true, numberOfThreadsToProceed: 1, numberOfSystemThreads: systemThreadsCount);
+            CalculateSizeOfAllEntities(entities);
+            timer.Stop();
+
 
             int startIndex = 0;
             string str = "";
@@ -51,17 +55,77 @@ namespace ConsoleScanner
             Console.ReadLine();
         }
 
-        static async Task GetDirectoryIerarchy(List<Entity> entities, List<string> fileNames_HeadDirectory, FileSystemInfo[] filesAndDirectories_HeadDirectory)
+        static void CalculateSizeOfAllEntities(List<Entity> entities, bool isAsync = false, int numberOfThreadsToProceed = 0, int numberOfSystemThreads = 0)
+        {
+            if (!isAsync)
+            {
+                foreach (var entity in entities)
+                {
+                    if (entity.Type == EntityType.Directory)
+                    {
+                        DirectoryInfo dir = (DirectoryInfo)entity.Info;
+                        entity.Size = GetDirectorySize(dir);
+                        entity.Persantage = entity.SubDirecory == null ? String.Empty : (100 * (float)GetDirectorySize(dir) / GetDirectorySize(dir.Parent)).ToString() + "%";
+                    }
+                    else
+                    {
+                        FileInfo file = (FileInfo)entity.Info;
+                        entity.Size = file.Length;
+                        entity.Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory)).ToString() + "%";
+                    }
+                }
+            }
+            else
+            {
+                foreach (var entity in entities)
+                {
+                    ThreadPool.QueueUserWorkItem(TaskForAnAsyncCalculation, entity);
+
+                    while (true)
+                    {
+                        ThreadPool.GetAvailableThreads(out int currentAvailableThreads, out _);
+                        if (numberOfSystemThreads - currentAvailableThreads < numberOfThreadsToProceed)
+                            break;
+                    }
+                }
+                while (true)
+                {
+                    ThreadPool.GetAvailableThreads(out int currentAvailableThreadsCount, out _);
+                    if (currentAvailableThreadsCount != numberOfSystemThreads)
+                        Thread.Sleep(100);
+                    else
+                        break;
+                }
+            }
+        }
+
+        static void TaskForAnAsyncCalculation(object entityObj)
+        {
+            Entity entity = (Entity)entityObj;
+            if (entity.Type == EntityType.Directory)
+            {
+                DirectoryInfo dir = (DirectoryInfo)entity.Info;
+                entity.Size = GetDirectorySize(dir);
+                entity.Persantage = entity.SubDirecory == null ? String.Empty : (100 * (float)GetDirectorySize(dir) / GetDirectorySize(dir.Parent)).ToString() + "%";
+            }
+            else
+            {
+                FileInfo file = (FileInfo)entity.Info;
+                entity.Size = file.Length;
+                entity.Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory)).ToString() + "%";
+            }
+        }
+
+        static void GetDirectoryIerarchy(List<Entity> entities, List<string> fileNames_HeadDirectory, FileSystemInfo[] filesAndDirectories_HeadDirectory)
         {
             foreach (var item in filesAndDirectories_HeadDirectory)
             {
                 if (fileNames_HeadDirectory.Contains(item.Name))
                     entities.Add(CreateEntityFromFile((FileInfo)item));
                 else
-                    await ProceedDirectory(entities, (DirectoryInfo)item);
+                    ProceedDirectory(entities, (DirectoryInfo)item);
 
             }
-            //return Task.CompletedTask;
         }
 
         static long GetDirectorySize(DirectoryInfo dir)
@@ -84,11 +148,12 @@ namespace ConsoleScanner
         {
             return new Entity
             {
+                Info = file,
                 Name = file.Name,
                 Type = file.Extension == ".txt" ? EntityType.TextFile : EntityType.File,
                 SubDirecory = file.Directory,
-                Size = file.Length,
-                Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory)).ToString() + "%"
+                //Size = file.Length,
+                //Persantage = (100 * (float)file.Length / GetDirectorySize(file.Directory)).ToString() + "%"
             };
         }
 
@@ -96,17 +161,17 @@ namespace ConsoleScanner
         {
             return new Entity
             {
+                Info = dir,
                 Name = dir.Name,
                 Type = EntityType.Directory,
                 SubDirecory = isHeadDirectory ? null : dir.Parent,
-                Size = GetDirectorySize(dir),
-                Persantage = isHeadDirectory ? String.Empty : (100 * (float)GetDirectorySize(dir) / GetDirectorySize(dir.Parent)).ToString() + "%"
+                //Size = GetDirectorySize(dir),
+                //Persantage = isHeadDirectory ? String.Empty : (100 * (float)GetDirectorySize(dir) / GetDirectorySize(dir.Parent)).ToString() + "%"
             };
         }
 
-        static async Task ProceedDirectory(List<Entity> entities, DirectoryInfo dir)
+        static void ProceedDirectory(List<Entity> entities, DirectoryInfo dir)
         {
-            //Console.WriteLine(Thread.CurrentThread.ManagedThreadId);
             entities.Add(CreateEntityFromDirectory(dir));
 
             // Get files and directories in the sub folder
@@ -114,8 +179,7 @@ namespace ConsoleScanner
             var directories_SubDirectory = dir.GetDirectories();
 
             // Dont include hidden files
-            var filesAndDirectories_SubDirectory = dir.GetFileSystemInfos();//.
-                      //Where(f => !f.Attributes.ToString().Contains("Hidden")).ToList();
+            var filesAndDirectories_SubDirectory = dir.GetFileSystemInfos();
 
             var fileNames_SubDirectory = new List<string>();
             foreach (var file in files_SubDirectory)
@@ -127,7 +191,7 @@ namespace ConsoleScanner
                 if (fileNames_SubDirectory.Contains(item.Name))
                     entities.Add(CreateEntityFromFile((FileInfo)item));
                 else
-                    await Task.Run(() => ProceedDirectory(entities, (DirectoryInfo)item));
+                    ProceedDirectory(entities, (DirectoryInfo)item);
 
             }
         }
@@ -170,8 +234,6 @@ namespace ConsoleScanner
                 {
                     PrintEntities(entities, ref index, ref indent, subDir);
                 }
-                    //break;
-                //PrintEntities(entities, ref index, ref indent, subDir);
                 else
                 {
                     if (subDir == null || entities[index].SubDirecory.FullName.Contains(entities[index-1].SubDirecory.FullName))
@@ -187,7 +249,6 @@ namespace ConsoleScanner
                     }
                 }
             }
-            //indent = indent.Length >= 2 ? indent.Remove(0, 2) : indent;
         }
     }
 
@@ -200,11 +261,12 @@ namespace ConsoleScanner
 
     public class Entity
     {
+        public FileSystemInfo Info { get; set; }
         public string Name { get; set; } // Имя
         public EntityType Type { get; set; } // Тип сущности
         public DirectoryInfo SubDirecory { get; set; } // Каталог, в котором содержится сущность (null для головной)
-        public long Size { get; set; } // размер (в байтах)
-        public string Persantage { get; set; } // размер (в процентах от всего содержимого каталога)
+        public long? Size { get; set; } = null; // размер (в байтах)
+        public string Persantage { get; set; } = null; // размер (в процентах от всего содержимого каталога)
 
         public Entity() { }
 
