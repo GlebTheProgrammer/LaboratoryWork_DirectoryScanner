@@ -27,8 +27,12 @@ namespace MyScannerLibrary
     // Main scanner class for usage
     public class DirScanner
     {
+        public static bool isWorking;
+
         public static List<Entity> Scan(string filePath)
         {
+            isWorking = true;
+
             // List of all our entities (files and directories)
             List<Entity> entities = new List<Entity>();
 
@@ -62,7 +66,8 @@ namespace MyScannerLibrary
             // Use this code to proceed all files synchronously
             //CalculateSizeOfAllEntities(entities);
 
-            return entities;
+            var result = from entitiesWithSize in entities where entitiesWithSize.Size != null select entitiesWithSize;
+            return result.ToList();
         }
 
         static void CalculateSizeOfAllEntities(List<Entity> entities, bool isAsync = false, int numberOfThreadsToProceed = 0, int numberOfSystemThreads = 0)
@@ -71,6 +76,9 @@ namespace MyScannerLibrary
             {
                 foreach (var entity in entities) // Check every entity
                 {
+                    if (!isWorking)
+                        break;
+
                     if (entity.Type == EntityType.Directory) // If we work with directory
                     {
                         DirectoryInfo dir = (DirectoryInfo)entity.Info; // Use explisit cast from FileSystemInfo into DirectoryInfo
@@ -89,6 +97,9 @@ namespace MyScannerLibrary
             {
                 foreach (var entity in entities)  // Check every entity
                 {
+                    if (!isWorking)
+                        break;
+
                     ThreadPool.QueueUserWorkItem(TaskForAnAsyncCalculation, entity); // Add method for calculating size into the ThreadPool
 
                     while (true) // Method for checking whether we have an open thread
@@ -109,6 +120,16 @@ namespace MyScannerLibrary
                     else
                         break; // If there is no -> do not wait
                 }
+            }
+
+            // This cycle need to check if there are some working processes after we canceled processing
+            while (true) // Cycle need to check if we have some working threads at the moment
+            {
+                ThreadPool.GetAvailableThreads(out int currentAvailableThreadsCount, out _);
+                if (currentAvailableThreadsCount != numberOfSystemThreads) // If we have some of them working
+                    Thread.Sleep(100); // Wait 100 ms and check again (immitation of waiting our unfinished threads) 
+                else
+                    break; // If there is no -> do not wait
             }
         }
 
@@ -222,6 +243,11 @@ namespace MyScannerLibrary
                                                                      // using the recursion with the new (current subDir) parameter
 
             }
+        }
+
+        public static void StopProcessing()
+        {
+            isWorking = false;
         }
     }
 }

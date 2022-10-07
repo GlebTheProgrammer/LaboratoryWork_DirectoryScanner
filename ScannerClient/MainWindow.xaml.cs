@@ -68,6 +68,12 @@ namespace ScannerClient
                 }
             }
         }
+
+        private void StopGauging_Btn_Click(object sender, RoutedEventArgs e)
+        {
+            MyScannerLibrary.DirScanner.StopProcessing();
+        }
+
         private void Border_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton == MouseButton.Left)
@@ -76,9 +82,8 @@ namespace ScannerClient
             }
         }
 
-        private void GaugeDir_Btn_Click(object sender, RoutedEventArgs e)
+        private async void GaugeDir_Btn_Click(object sender, RoutedEventArgs e)
         {
-
             OpenFileDialog folderBrowser = new OpenFileDialog();
             // Set validate names and check file exists to false otherwise windows will
             // not let you select "Folder Selection."
@@ -87,25 +92,28 @@ namespace ScannerClient
             folderBrowser.CheckPathExists = true;
             // Always default to Folder Selection.
             folderBrowser.FileName = "Folder Selection.";
+
+            string? folderPath = string.Empty;
             if (folderBrowser.ShowDialog() == true)
             {
-                string? folderPath = Path.GetDirectoryName(folderBrowser.FileName);
+                folderPath = Path.GetDirectoryName(folderBrowser.FileName);
 
                 if (folderPath == null)
                 {
                     MessageBox.Show("Error. Folder path is null!");
                     return;
                 }
-
-                var entities = MyScannerLibrary.DirScanner.Scan(folderPath);
-
-                TreeView treeView = GenerateTreeViewFromTheEntities(null, entities, 0, null);
-
-                if (DirectoryTreeView.Children.Count > 0 )
-                    DirectoryTreeView.Children.RemoveAt(0);
-
-                DirectoryTreeView.Children.Add(treeView);
             }
+
+            var task = Task.Run(() => TaskForAnAsyncOperation(folderPath));
+            var entities = await task;
+
+            TreeView treeView = GenerateTreeViewFromTheEntities(null, entities, 0, null);
+
+            if (DirectoryTreeView.Children.Count > 0)
+                DirectoryTreeView.Children.RemoveAt(0);
+
+            DirectoryTreeView.Children.Add(treeView);
         }
 
         private void Logout_Btn_Click(object sender, RoutedEventArgs e)
@@ -114,71 +122,81 @@ namespace ScannerClient
             Application.Current.Shutdown();
         }
 
-
-
         // Methods for usage (Not connected with xaml items)
 
         private TreeView GenerateTreeViewFromTheEntities(TreeViewItem treeItem, List<MyScannerLibrary.Entity> entities, int index, DirectoryInfo subDir)
         {
-            TreeView treeView = new TreeView();
-            TreeViewItem tempItem = new TreeViewItem();
-
-            // Proceed through all list of entities
-            while (index <= entities.Count - 1)
+            TreeView treeView = null;
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                if (index == 0 || entities[index].SubDirecory.FullName == subDir?.FullName)
+                treeView = new TreeView();
+                TreeViewItem tempItem = new TreeViewItem();
+
+                // Proceed through all list of entities
+                while (index <= entities.Count - 1)
                 {
-                    string extension = entities[index].Type == MyScannerLibrary.EntityType.File ? "(file)" : entities[index].Type == MyScannerLibrary.EntityType.Directory ? "(dir)" : "(txt)";
-                    string persantage = entities[index].Persantage == String.Empty ? "" : $", {entities[index].Persantage}";
-
-                    var newTreeItem = new TreeViewItem();
-
-                    StackPanel stackPanel = new StackPanel() { Orientation = Orientation.Horizontal };
-                    TextBlock textBlock = new TextBlock() { Text = extension + $" {entities[index].Name} ({entities[index].Size} байт{persantage})" };
-
-                    string path = entities[index].Type == MyScannerLibrary.EntityType.File ? normalFileUri.ToString() : entities[index].Type == MyScannerLibrary.EntityType.Directory ? folderUri.ToString() : textFileUri.ToString();
-                    Uri uri = new Uri(path);
-                    var image = new Image() { Source = new BitmapImage(uri) }; 
-
-                    stackPanel.Children.Add(image);
-                    stackPanel.Children.Add(textBlock);
-
-                    newTreeItem.Header = stackPanel;
-
-                    if (treeItem == null)
+                    if (index == 0 || entities[index].SubDirecory.FullName == subDir?.FullName)
                     {
-                        treeView.Items.Add(newTreeItem);
-                        treeItem = newTreeItem;
-                    }
-                    else
-                    {
-                        treeItem.Items.Add(newTreeItem);
-                    }
+                        string extension = entities[index].Type == MyScannerLibrary.EntityType.File ? "(file)" : entities[index].Type == MyScannerLibrary.EntityType.Directory ? "(dir)" : "(txt)";
+                        string persantage = entities[index].Persantage == String.Empty ? "" : $", {entities[index].Persantage}";
 
-                    tempItem = newTreeItem;
+                        var newTreeItem = new TreeViewItem();
 
-                    index += 1;
+                        StackPanel stackPanel = new StackPanel() { Orientation = Orientation.Horizontal };
+                        TextBlock textBlock = new TextBlock() { Text = extension + $" {entities[index].Name} ({entities[index].Size} байт{persantage})" };
 
-                    continue;
-                }
-                else
-                {
-                    if (subDir == null || entities[index].SubDirecory.FullName.Contains(entities[index - 1].SubDirecory.FullName))
-                    {
-                        treeItem = tempItem;
-                        subDir = entities[index].SubDirecory;
+                        string path = entities[index].Type == MyScannerLibrary.EntityType.File ? normalFileUri.ToString() : entities[index].Type == MyScannerLibrary.EntityType.Directory ? folderUri.ToString() : textFileUri.ToString();
+                        Uri uri = new Uri(path);
+                        var image = new Image() { Source = new BitmapImage(uri) };
+
+                        stackPanel.Children.Add(image);
+                        stackPanel.Children.Add(textBlock);
+
+                        newTreeItem.Header = stackPanel;
+
+                        if (treeItem == null)
+                        {
+                            treeView.Items.Add(newTreeItem);
+                            treeItem = newTreeItem;
+                        }
+                        else
+                        {
+                            treeItem.Items.Add(newTreeItem);
+                        }
+
+                        tempItem = newTreeItem;
+
+                        index += 1;
+
                         continue;
                     }
                     else
                     {
-                        subDir = subDir.Parent;
-                        treeItem = (TreeViewItem)treeItem.Parent;
-                        continue;
+                        if (subDir == null || entities[index].SubDirecory.FullName.Contains(entities[index - 1].SubDirecory.FullName))
+                        {
+                            treeItem = tempItem;
+                            subDir = entities[index].SubDirecory;
+                            continue;
+                        }
+                        else
+                        {
+                            subDir = subDir.Parent;
+                            treeItem = (TreeViewItem)treeItem.Parent;
+                            continue;
+                        }
                     }
                 }
-            }
 
+                return treeView;
+            });
             return treeView;
+        }
+
+        private Task<List<MyScannerLibrary.Entity>> TaskForAnAsyncOperation(string folderPath)
+        {
+            var entities = MyScannerLibrary.DirScanner.Scan(folderPath);
+
+            return Task.FromResult<List<MyScannerLibrary.Entity>>(entities);
         }
     }
 }

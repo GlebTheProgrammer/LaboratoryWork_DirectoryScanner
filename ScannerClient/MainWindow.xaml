@@ -60,7 +60,7 @@
                                 </StackPanel>
                             </Button>
 
-                            <Button x:Name="StopGauging_Btn" Style="{StaticResource menuButton}">
+                            <Button x:Name="StopGauging_Btn" Style="{StaticResource menuButton}" Click="StopGauging_Btn_Click">
                                 <StackPanel Orientation="Horizontal">
                                     <Icon:PackIconMaterial Kind="CloseOctagon" Style="{StaticResource menuButtonIcon}"/>
                                     <TextBlock Text="Stop Gauging"/>
