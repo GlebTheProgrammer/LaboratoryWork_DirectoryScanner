@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace ScannerClient.Models
 {
+    // This classes are not used because we take the same implementation from our dll, but having them there can be good
+    // if we want to check models structure without going to the dll file
+
     // Main entity class (files and directories)
     public class Entity
     {

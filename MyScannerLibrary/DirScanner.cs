@@ -70,12 +70,18 @@ namespace MyScannerLibrary
             return result.ToList();
         }
 
+        // Main method for calculating all entities size
         static void CalculateSizeOfAllEntities(List<Entity> entities, bool isAsync = false, int numberOfThreadsToProceed = 0, int numberOfSystemThreads = 0)
         {
             if (!isAsync) // If we want to proceed synchronously
             {
                 foreach (var entity in entities) // Check every entity
                 {
+                    // If we have received the signal from WPF app - we stop activating new threaads and leave from the scan cycle 
+                    // It works as: We have a static variable (it is a readonly variable for all the threads). Each time they check
+                    // whether it is true or nor. As a client, we can change this variable having a link for it to false variable
+                    // It means that we change data, and as we are working with a single variable, all the threads will realize that
+                    // we have changed the value. It will be something like a token for our threads wich they will use.
                     if (!isWorking)
                         break;
 
@@ -97,6 +103,7 @@ namespace MyScannerLibrary
             {
                 foreach (var entity in entities)  // Check every entity
                 {
+                    // Same logic as above
                     if (!isWorking)
                         break;
 
@@ -122,8 +129,8 @@ namespace MyScannerLibrary
                 }
             }
 
-            // This cycle need to check if there are some working processes after we canceled processing
-            while (true) // Cycle need to check if we have some working threads at the moment
+            // This cycle need to check if there are some working processes after we canceled gauging directory from client WPF side
+            while (true)
             {
                 ThreadPool.GetAvailableThreads(out int currentAvailableThreadsCount, out _);
                 if (currentAvailableThreadsCount != numberOfSystemThreads) // If we have some of them working
@@ -245,6 +252,7 @@ namespace MyScannerLibrary
             }
         }
 
+        // Methods for usage in a client side to change static variable wich will not allow application to create new threads for processing dir size
         public static void StopProcessing()
         {
             isWorking = false;
