@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.IO;
 
 namespace MyScannerLibrary
 {
@@ -31,6 +32,9 @@ namespace MyScannerLibrary
 
         public static List<Entity> Scan(string filePath)
         {
+            if (filePath == null || !Directory.Exists(filePath))
+                throw new Exception("Error. Directory does not exist.");
+
             isWorking = true;
 
             // List of all our entities (files and directories)
